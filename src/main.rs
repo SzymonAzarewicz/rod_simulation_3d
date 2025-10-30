@@ -179,15 +179,31 @@ struct FishingRod {
 
 impl FishingRod {
     fn new(base_position: Vec3, length: f32, segment_count: usize) -> Self {
-        let mut system = MassSpringSystem::new(vec3(0.0, -9.81, 0.0));
+        // GRAWITACJA WYŁĄCZONA (0.0 zamiast -9.81)
+        let mut system = MassSpringSystem::new(vec3(0.0, 0.0, 0.0));
 
         let segment_length = length / segment_count as f32;
-        let mass_per_segment = 0.3; // Zwiększone z 0.1 do 0.3 kg (bardziej stabilne)
-        let stiffness = 100.0; // Zmniejszone z 500 do 100 N/m (mniej sztywne)
-        let damping = 15.0; // Zwiększone z 5 do 15 Ns/m (więcej tłumienia)
+        let mass_per_segment = 0.3;
+
+        // 3 RODZAJE SPRĘŻYN dla różnych sekcji wędki:
+        // Dolna 60% (9 segmentów z 15) - BARDZO SZTYWNA (jak rączka wędki)
+        let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
+        let stiffness_base = 500.0; // Bardzo sztywna
+        let damping_base = 20.0;
+
+        // Środkowa 20% (3 segmenty) - ŚREDNIO SZTYWNA
+        let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
+        let stiffness_medium = 200.0; // Średnia sztywność
+        let damping_medium = 15.0;
+
+        // Górna 20% (3 segmenty) - GIĘTKA (czubek wędki)
+        let stiffness_tip = 50.0; // Giętka
+        let damping_tip = 10.0;
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;
+        let mut spring_index = 0;
+
         for i in 0..=segment_count {
             let t = i as f32 / segment_count as f32;
             let position = base_position + vec3(0.0, length * t, 0.0);
@@ -197,6 +213,15 @@ impl FishingRod {
 
             // Połącz z poprzednim punktem sprężyną
             if let Some(prev_idx) = previous_index {
+                // Wybierz parametry sprężyny w zależności od sekcji
+                let (stiffness, damping) = if spring_index < stiff_section_end {
+                    (stiffness_base, damping_base) // Dolna 60% - sztywna
+                } else if spring_index < medium_section_end {
+                    (stiffness_medium, damping_medium) // Środkowa 20% - średnia
+                } else {
+                    (stiffness_tip, damping_tip) // Górna 20% - giętka
+                };
+
                 system.add_spring(Spring::new(
                     prev_idx,
                     index,
@@ -204,6 +229,8 @@ impl FishingRod {
                     stiffness,
                     damping,
                 ));
+
+                spring_index += 1;
             }
 
             previous_index = Some(index);
@@ -368,20 +395,32 @@ fn main() {
             },
         );
 
-        // Twórz kule w punktach masy
+        // Twórz kule w punktach masy z kolorami wg sekcji
         let mut spheres = Vec::new();
+        let total_points = rod_positions.len();
+        let stiff_end = (total_points as f32 * 0.6).round() as usize; // 9
+        let medium_end = (total_points as f32 * 0.8).round() as usize; // 12
+
         for (i, pos) in rod_positions.iter().enumerate() {
             let radius = if i == 0 { 0.08 } else { 0.05 }; // Większa kula u podstawy
+
+            // Kolor w zależności od sekcji wędki
+            let color = if i == 0 {
+                Srgba::new(200, 50, 50, 255) // Czerwony - podstawa (fixed point)
+            } else if i <= stiff_end {
+                Srgba::new(80, 40, 20, 255) // Ciemny brąz - dolna 60% (sztywna)
+            } else if i <= medium_end {
+                Srgba::new(139, 90, 50, 255) // Średni brąz - środkowa 20% (średnia)
+            } else {
+                Srgba::new(200, 180, 100, 255) // Jasny żółty-brąz - górna 20% (giętka)
+            };
+
             let mut sphere = Gm::new(
                 Mesh::new(&context, &CpuMesh::sphere(8)),
                 PhysicalMaterial::new_opaque(
                     &context,
                     &CpuMaterial {
-                        albedo: if i == 0 {
-                            Srgba::new(200, 50, 50, 255)
-                        } else {
-                            Srgba::new(139, 69, 19, 255)
-                        },
+                        albedo: color,
                         ..Default::default()
                     },
                 ),

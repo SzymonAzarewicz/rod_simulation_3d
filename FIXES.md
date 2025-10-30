@@ -120,10 +120,54 @@ Point 15: pos=(x, y, z), vel=(x, y, z), acc=(x, y, z), force=(x, y, z)
 - Bardziej realistyczny limit
 - Jeszcze większe bezpieczeństwo przed eksplozją
 
-### Oczekiwane zachowanie:
-1. Pierwsze 2 sekundy: wędka opada pod wpływem grawitacji
-2. System stabilizuje się w pozycji wiszącego pręta
-3. Po 2 sekundach: delikatne kołysanie od wiatru
+## TRZECIA ITERACJA POPRAWEK (po analizie logów v2):
+
+**Problem zidentyfikowany z nowych logów:**
+```
+Frame 30:  Point 15: y = 1.88  (start: y=3.0)
+Frame 60:  Point 15: y = -0.74 (PONIŻEJ PODŁOGI!)
+Frame 360: Point 15: y = -7.46 (bardzo nisko)
+```
+
+**Przyczyna:** Sprężyny 100 N/m były zbyt SŁABE aby utrzymać wędkę przeciwko grawitacji!
+- Wędka zapadała się pod własnym ciężarem
+- Przyspieszenia były rozsądne (3-40 m/s²), ale wędka po prostu spadała
+
+**Rozwiązanie:**
+1. **WYŁĄCZONO GRAWITACJĘ** (chwilowo) - vec3(0.0, 0.0, 0.0)
+2. **3-SEKCYJNA KONSTRUKCJA WĘDKI** (jak prawdziwa wędka wędkarska):
+
+### Nowa architektura wędki:
+
+**Dolna 60% (9 segmentów z 15):**
+- Sztywność: 500 N/m (bardzo sztywna)
+- Tłumienie: 20 Ns/m
+- Kolor: ciemny brąz
+- Rola: stabilna rączka/podstawa wędki
+
+**Środkowa 20% (3 segmenty):**
+- Sztywność: 200 N/m (średnia)
+- Tłumienie: 15 Ns/m
+- Kolor: średni brąz
+- Rola: przejście gradientowe
+
+**Górna 20% (3 segmenty):**
+- Sztywność: 50 N/m (giętka)
+- Tłumienie: 10 Ns/m
+- Kolor: jasny żółto-brązowy
+- Rola: elastyczny czubek
+
+### Uzasadnienie:
+Prawdziwe wędki wędkarskie mają taką konstrukcję:
+- Gruba, sztywna rączka u podstawy (carbon fiber)
+- Stopniowe zmniejszanie średnicy w środku
+- Cienki, elastyczny czubek na końcu (reaguje na brania ryby)
+
+### Oczekiwane zachowanie (bez grawitacji):
+1. Wędka stoi prosto w górę (brak opadania)
+2. Dolna część pozostaje sztywna
+3. Środek może się lekko wyginać
+4. Czubek (20% górnej części) elastycznie reaguje na siły wiatru
 
 ## Testy do wykonania
 
