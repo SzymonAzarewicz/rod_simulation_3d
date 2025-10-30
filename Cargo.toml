@@ -1,0 +1,7 @@
+[package]
+name = "rod_simulation_3d"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+three-d = "0.17"
