@@ -49,8 +49,9 @@ Wędka składa się z:
 
 4. **Siła zewnętrzna** (symulacja wiatru):
    ```
-   F_wind = (sin(2t) * 2.0, 0, cos(3t) * 1.5)
+   F_wind = (sin(2t) * 0.5, 0, cos(3t) * 0.3)
    ```
+   - Wiatr zaczyna działać po 2 sekundach (stabilizacja)
 
 #### Integracja numeryczna:
 Metoda Eulera z krokiem czasowym dt = 0.016s (~60 FPS):
@@ -58,6 +59,11 @@ Metoda Eulera z krokiem czasowym dt = 0.016s (~60 FPS):
 v(t+dt) = v(t) + a(t) * dt
 x(t+dt) = x(t) + v(t) * dt
 ```
+
+#### Zabezpieczenia:
+- Ograniczenie maksymalnej prędkości: 50 m/s
+- System sił zewnętrznych z czyszczeniem bufora
+- Logowanie do pliku `simulation_log.txt`
 
 ### 4. Rendering 3D
 - Biblioteka: **three-d** (v0.17)
@@ -129,6 +135,28 @@ three-d = "0.17"
 - **Mysz (lewy przycisk + przeciągnięcie)**: Obracanie kamery wokół sceny
 - **Scroll myszy**: Przybliżanie/oddalanie widoku
 - **ESC**: Zamknięcie aplikacji
+
+## Debugowanie
+
+Aplikacja automatycznie tworzy plik `simulation_log.txt` z informacjami diagnostycznymi:
+
+```bash
+# Podgląd logów w czasie rzeczywistym
+tail -f simulation_log.txt
+
+# Analiza logów po uruchomieniu
+cat simulation_log.txt
+```
+
+**Format logów:**
+- Logowanie co 0.5 sekundy (30 klatek)
+- Punkty: podstawa (0), środek (7-8), końcówka (15)
+- Dane: pozycja, prędkość, przyspieszenie, siła całkowita
+
+**Sprawdzanie problemów:**
+- Prędkości > 50 m/s → ograniczenie aktywne
+- Pozycje z NaN/Inf → błąd numeryczny
+- Wszystkie punkty na (0,0,0) → problem inicjalizacji
 
 ## Możliwe Rozszerzenia
 

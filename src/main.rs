@@ -1,4 +1,6 @@
 use three_d::*;
+use std::fs::OpenOptions;
+use std::io::Write as IoWrite;
 
 // Struktura reprezentująca punkt masy
 #[derive(Clone, Debug)]
@@ -47,6 +49,7 @@ struct MassSpringSystem {
     masses: Vec<MassPoint>,
     springs: Vec<Spring>,
     gravity: Vec3,
+    external_forces: Vec<Vec3>, // Siły zewnętrzne dla każdego punktu
 }
 
 impl MassSpringSystem {
@@ -55,11 +58,13 @@ impl MassSpringSystem {
             masses: Vec::new(),
             springs: Vec::new(),
             gravity,
+            external_forces: Vec::new(),
         }
     }
 
     fn add_mass(&mut self, mass: MassPoint) -> usize {
         self.masses.push(mass);
+        self.external_forces.push(Vec3::zero());
         self.masses.len() - 1
     }
 
@@ -67,7 +72,13 @@ impl MassSpringSystem {
         self.springs.push(spring);
     }
 
-    fn update(&mut self, dt: f32) {
+    fn apply_force(&mut self, index: usize, force: Vec3) {
+        if index < self.external_forces.len() {
+            self.external_forces[index] += force;
+        }
+    }
+
+    fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
         // Oblicz siły sprężyn
         let mut forces: Vec<Vec3> = vec![Vec3::zero(); self.masses.len()];
 
@@ -97,19 +108,51 @@ impl MassSpringSystem {
             }
         }
 
+        // Log co 30 klatek (0.5 sekundy przy 60 FPS)
+        let should_log = frame % 30 == 0;
+
+        if should_log {
+            let _ = writeln!(log_file, "\n=== Frame {} ===", frame);
+        }
+
         // Zastosuj siły i zaktualizuj pozycje
         for (i, mass) in self.masses.iter_mut().enumerate() {
             if !mass.fixed {
-                // Dodaj grawitację
-                let total_force = forces[i] + self.gravity * mass.mass;
+                // Dodaj grawitację i siły zewnętrzne
+                let total_force = forces[i] + self.gravity * mass.mass + self.external_forces[i];
 
                 // F = ma -> a = F/m
                 let acceleration = total_force / mass.mass;
 
-                // Integracja Eulera
+                // Integracja Eulera z ograniczeniem prędkości
                 mass.velocity += acceleration * dt;
+
+                // Ograniczenie maksymalnej prędkości (zapobieganie eksplozji)
+                let max_velocity = 50.0;
+                let velocity_magnitude = mass.velocity.magnitude();
+                if velocity_magnitude > max_velocity {
+                    mass.velocity = mass.velocity * (max_velocity / velocity_magnitude);
+                }
+
                 mass.position += mass.velocity * dt;
+
+                if should_log && (i == 0 || i == self.masses.len() - 1 || i == self.masses.len() / 2) {
+                    let _ = writeln!(
+                        log_file,
+                        "Point {}: pos=({:.2}, {:.2}, {:.2}), vel=({:.2}, {:.2}, {:.2}), acc=({:.2}, {:.2}, {:.2}), force=({:.2}, {:.2}, {:.2})",
+                        i,
+                        mass.position.x, mass.position.y, mass.position.z,
+                        mass.velocity.x, mass.velocity.y, mass.velocity.z,
+                        acceleration.x, acceleration.y, acceleration.z,
+                        total_force.x, total_force.y, total_force.z
+                    );
+                }
             }
+        }
+
+        // Wyczyść siły zewnętrzne po zastosowaniu
+        for force in &mut self.external_forces {
+            *force = Vec3::zero();
         }
     }
 }
@@ -158,8 +201,8 @@ impl FishingRod {
         }
     }
 
-    fn update(&mut self, dt: f32) {
-        self.system.update(dt);
+    fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
+        self.system.update(dt, log_file, frame);
     }
 
     fn get_positions(&self) -> Vec<Vec3> {
@@ -168,15 +211,23 @@ impl FishingRod {
 
     // Dodaj siłę zewnętrzną do końcówki wędki (np. od ryby lub wiatru)
     fn apply_force_to_tip(&mut self, force: Vec3) {
-        if let Some(last) = self.system.masses.last_mut() {
-            if !last.fixed {
-                last.velocity += force / last.mass * 0.016; // Zakładając dt=0.016
-            }
-        }
+        let last_index = self.system.masses.len() - 1;
+        self.system.apply_force(last_index, force);
     }
 }
 
 fn main() {
+    // Utwórz plik logowania
+    let mut log_file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open("simulation_log.txt")
+        .expect("Unable to create log file");
+
+    writeln!(log_file, "=== Fishing Rod Simulation Log ===").unwrap();
+    writeln!(log_file, "Start time: {:?}\n", std::time::SystemTime::now()).unwrap();
+
     // Twórz okno i kontekst
     let window = Window::new(WindowSettings {
         title: "3D Fishing Rod Simulation - Mass-Spring Model".to_string(),
@@ -210,7 +261,7 @@ fn main() {
         .transform(&Mat4::from_angle_x(degrees(-90.0)))
         .unwrap();
 
-    let mut board = Gm::new(
+    let board = Gm::new(
         Mesh::new(&context, &board_cpu_mesh),
         PhysicalMaterial::new_opaque(
             &context,
@@ -255,22 +306,27 @@ fn main() {
 
     // Zmienna do symulacji czasu
     let mut time = 0.0f32;
+    let mut frame_count = 0u32;
 
     // Pętla renderowania
     window.render_loop(move |mut frame_input| {
         let dt = 0.016; // ~60 FPS
         time += dt;
+        frame_count += 1;
 
-        // Zastosuj siłę do końcówki wędki (symulacja wiatru lub ruchu)
-        let wind_force = vec3(
-            (time * 2.0).sin() * 2.0,
-            0.0,
-            (time * 3.0).cos() * 1.5,
-        );
-        fishing_rod.apply_force_to_tip(wind_force);
+        // Zastosuj siłę do końcówki wędki (symulacja wiatru - znacznie zmniejszona)
+        // Siła jest teraz opcjonalna i dużo mniejsza
+        if time > 2.0 { // Zacznij od 2 sekundy, żeby wędka się ustabilizowała
+            let wind_force = vec3(
+                (time * 2.0).sin() * 0.5,  // Zmniejszone z 2.0 do 0.5
+                0.0,
+                (time * 3.0).cos() * 0.3,  // Zmniejszone z 1.5 do 0.3
+            );
+            fishing_rod.apply_force_to_tip(wind_force);
+        }
 
         // Aktualizuj symulację wędki
-        fishing_rod.update(dt);
+        fishing_rod.update(dt, &mut log_file, frame_count);
 
         // Aktualizuj kontrolę kamery
         control.handle_events(&mut camera, &mut frame_input.events);
