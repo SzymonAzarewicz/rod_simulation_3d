@@ -98,27 +98,28 @@ src/main.rs
 - Masa segmentu: 0.3 kg
 - **Grawitacja: WYŁĄCZONA** (0.0 zamiast -9.81 m/s²)
 - Pozycja bazowa: (0, 1, 0) - podniesiona nad podłogę
-- Substeps: 2 (zmniejszone z 4 dla stabilności)
+- Substeps: 8 (ZWIĘKSZONE dla stabilności numerycznej)
 - Max prędkość: 20 m/s
+- Wiatr: WYŁĄCZONY (do czasu stabilizacji)
 
-#### 3-sekcyjna konstrukcja (jak prawdziwa wędka):
-1. **Dolna 60% (9 segmentów)** - SZTYWNA PODSTAWA
-   - Sztywność: 800.0 N/m (zwiększone z 500)
-   - Tłumienie: 25.0 Ns/m
+#### 3-sekcyjna konstrukcja (zbalansowana stabilność):
+1. **Dolna 60% (9 segmentów)** - PODSTAWA
+   - Sztywność: 100.0 N/m
+   - Tłumienie: 100.0 Ns/m (wysokie dla stabilności!)
    - Kolor: ciemny brąz
    - Funkcja: stabilna rączka wędki
 
-2. **Środkowa 20% (3 segmenty)** - ŚREDNIA SEKCJA
-   - Sztywność: 400.0 N/m (zwiększone z 200)
-   - Tłumienie: 20.0 Ns/m
+2. **Środkowa 20% (3 segmenty)** - ŚRODEK
+   - Sztywność: 50.0 N/m
+   - Tłumienie: 80.0 Ns/m (wysokie!)
    - Kolor: średni brąz
    - Funkcja: przejście między sztywnością a elastycznością
 
-3. **Górna 20% (3 segmenty)** - ELASTYCZNA KOŃCÓWKA
-   - Sztywność: 150.0 N/m (zwiększone z 50)
-   - Tłumienie: 15.0 Ns/m
+3. **Górna 20% (3 segmenty)** - KOŃCÓWKA
+   - Sztywność: 25.0 N/m (najniższa)
+   - Tłumienie: 60.0 Ns/m
    - Kolor: jasny żółto-brązowy
-   - Funkcja: elastyczny czubek reagujący na siły
+   - Funkcja: elastyczny czubek
 
 ### Kamera:
 - Pozycja startowa: (5, 3, 5)

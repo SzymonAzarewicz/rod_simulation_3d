@@ -79,8 +79,8 @@ impl MassSpringSystem {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Substeps dla lepszej stabilności numerycznej (zmniejszone z 4 do 2)
-        let substeps = 2;
+        // Substeps dla lepszej stabilności numerycznej (ZWIĘKSZONE z 2 do 8!)
+        let substeps = 8;
         let sub_dt = dt / substeps as f32;
 
         // Log częściej na początku (co 10 klatek), potem co 30
@@ -201,19 +201,21 @@ impl FishingRod {
         let mass_per_segment = 0.3;
 
         // 3 RODZAJE SPRĘŻYN dla różnych sekcji wędki:
-        // Dolna 60% (9 segmentów z 15) - BARDZO SZTYWNA (jak rączka wędki)
+        // DRASTYCZNIE ZMNIEJSZONA sztywność + ZWIĘKSZONE tłumienie dla stabilności!
+
+        // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 800.0; // Zwiększone z 500 - bardzo sztywna
-        let damping_base = 25.0;
+        let stiffness_base = 100.0; // ZMNIEJSZONE z 800 (8x mniej!)
+        let damping_base = 100.0;   // ZWIĘKSZONE z 25 (4x więcej!)
 
-        // Środkowa 20% (3 segmenty) - ŚREDNIO SZTYWNA
+        // Środkowa 20% (3 segmenty) - ŚREDNIA sekcja
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 400.0; // Zwiększone z 200
-        let damping_medium = 20.0;
+        let stiffness_medium = 50.0; // ZMNIEJSZONE z 400 (8x mniej!)
+        let damping_medium = 80.0;   // ZWIĘKSZONE z 20 (4x więcej!)
 
-        // Górna 20% (3 segmenty) - GIĘTKA ale nie ZA SŁABA
-        let stiffness_tip = 150.0; // Zwiększone z 50 - było za słabe!
-        let damping_tip = 15.0;
+        // Górna 20% (3 segmenty) - ELASTYCZNA końcówka
+        let stiffness_tip = 25.0; // ZMNIEJSZONE z 150 (6x mniej!)
+        let damping_tip = 60.0;   // ZWIĘKSZONE z 15 (4x więcej!)
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;
@@ -370,16 +372,18 @@ fn main() {
         time += dt;
         frame_count += 1;
 
-        // Zastosuj siłę do końcówki wędki (symulacja wiatru - znacznie zmniejszona)
-        // Siła jest teraz opcjonalna i dużo mniejsza
-        if time > 2.0 { // Zacznij od 2 sekundy, żeby wędka się ustabilizowała
+        // WIATR TYMCZASOWO WYŁĄCZONY - najpierw system musi być stabilny bez sił zewnętrznych
+        // Można włączyć po stabilizacji odkomentowując poniżej:
+        /*
+        if time > 5.0 { // Zacznij dopiero po 5 sekundach pełnej stabilizacji
             let wind_force = vec3(
-                (time * 2.0).sin() * 0.5,  // Zmniejszone z 2.0 do 0.5
+                (time * 2.0).sin() * 0.2,  // Bardzo małe siły
                 0.0,
-                (time * 3.0).cos() * 0.3,  // Zmniejszone z 1.5 do 0.3
+                (time * 3.0).cos() * 0.15,
             );
             fishing_rod.apply_force_to_tip(wind_force);
         }
+        */
 
         // Aktualizuj symulację wędki
         fishing_rod.update(dt, &mut log_file, frame_count);
