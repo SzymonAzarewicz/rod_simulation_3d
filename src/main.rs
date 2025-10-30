@@ -115,6 +115,10 @@ impl MassSpringSystem {
             let _ = writeln!(log_file, "\n=== Frame {} ===", frame);
         }
 
+        // Przechwyć długość przed pętlą (dla borrow checkera)
+        let masses_len = self.masses.len();
+        let mid_point = masses_len / 2;
+
         // Zastosuj siły i zaktualizuj pozycje
         for (i, mass) in self.masses.iter_mut().enumerate() {
             if !mass.fixed {
@@ -136,7 +140,7 @@ impl MassSpringSystem {
 
                 mass.position += mass.velocity * dt;
 
-                if should_log && (i == 0 || i == self.masses.len() - 1 || i == self.masses.len() / 2) {
+                if should_log && (i == 0 || i == masses_len - 1 || i == mid_point) {
                     let _ = writeln!(
                         log_file,
                         "Point {}: pos=({:.2}, {:.2}, {:.2}), vel=({:.2}, {:.2}, {:.2}), acc=({:.2}, {:.2}, {:.2}), force=({:.2}, {:.2}, {:.2})",
