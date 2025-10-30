@@ -79,34 +79,9 @@ impl MassSpringSystem {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Oblicz siły sprężyn
-        let mut forces: Vec<Vec3> = vec![Vec3::zero(); self.masses.len()];
-
-        for spring in &self.springs {
-            let pos_a = self.masses[spring.point_a].position;
-            let pos_b = self.masses[spring.point_b].position;
-            let vel_a = self.masses[spring.point_a].velocity;
-            let vel_b = self.masses[spring.point_b].velocity;
-
-            let delta = pos_b - pos_a;
-            let distance = delta.magnitude();
-
-            if distance > 0.0001 {
-                let direction = delta / distance;
-
-                // Siła sprężyny (prawo Hooke'a)
-                let spring_force = direction * spring.stiffness * (distance - spring.rest_length);
-
-                // Siła tłumienia
-                let relative_velocity = vel_b - vel_a;
-                let damping_force = direction * spring.damping * relative_velocity.dot(direction);
-
-                let total_force = spring_force + damping_force;
-
-                forces[spring.point_a] += total_force;
-                forces[spring.point_b] -= total_force;
-            }
-        }
+        // Substeps dla lepszej stabilności numerycznej
+        let substeps = 4;
+        let sub_dt = dt / substeps as f32;
 
         // Log co 30 klatek (0.5 sekundy przy 60 FPS)
         let should_log = frame % 30 == 0;
@@ -119,37 +94,72 @@ impl MassSpringSystem {
         let masses_len = self.masses.len();
         let mid_point = masses_len / 2;
 
-        // Zastosuj siły i zaktualizuj pozycje
-        for (i, mass) in self.masses.iter_mut().enumerate() {
-            if !mass.fixed {
-                // Dodaj grawitację i siły zewnętrzne
-                let total_force = forces[i] + self.gravity * mass.mass + self.external_forces[i];
+        for step in 0..substeps {
+            // Oblicz siły sprężyn
+            let mut forces: Vec<Vec3> = vec![Vec3::zero(); self.masses.len()];
 
-                // F = ma -> a = F/m
-                let acceleration = total_force / mass.mass;
+            for spring in &self.springs {
+                let pos_a = self.masses[spring.point_a].position;
+                let pos_b = self.masses[spring.point_b].position;
+                let vel_a = self.masses[spring.point_a].velocity;
+                let vel_b = self.masses[spring.point_b].velocity;
 
-                // Integracja Eulera z ograniczeniem prędkości
-                mass.velocity += acceleration * dt;
+                let delta = pos_b - pos_a;
+                let distance = delta.magnitude();
 
-                // Ograniczenie maksymalnej prędkości (zapobieganie eksplozji)
-                let max_velocity = 50.0;
-                let velocity_magnitude = mass.velocity.magnitude();
-                if velocity_magnitude > max_velocity {
-                    mass.velocity = mass.velocity * (max_velocity / velocity_magnitude);
+                if distance > 0.0001 {
+                    let direction = delta / distance;
+
+                    // Siła sprężyny (prawo Hooke'a)
+                    let spring_force = direction * spring.stiffness * (distance - spring.rest_length);
+
+                    // Siła tłumienia
+                    let relative_velocity = vel_b - vel_a;
+                    let damping_force = direction * spring.damping * relative_velocity.dot(direction);
+
+                    let total_force = spring_force + damping_force;
+
+                    forces[spring.point_a] += total_force;
+                    forces[spring.point_b] -= total_force;
                 }
+            }
 
-                mass.position += mass.velocity * dt;
+            // Zastosuj siły i zaktualizuj pozycje
+            for (i, mass) in self.masses.iter_mut().enumerate() {
+                if !mass.fixed {
+                    // Dodaj grawitację i siły zewnętrzne (tylko w pierwszym substep)
+                    let mut total_force = forces[i] + self.gravity * mass.mass;
+                    if step == 0 {
+                        total_force += self.external_forces[i];
+                    }
 
-                if should_log && (i == 0 || i == masses_len - 1 || i == mid_point) {
-                    let _ = writeln!(
-                        log_file,
-                        "Point {}: pos=({:.2}, {:.2}, {:.2}), vel=({:.2}, {:.2}, {:.2}), acc=({:.2}, {:.2}, {:.2}), force=({:.2}, {:.2}, {:.2})",
-                        i,
-                        mass.position.x, mass.position.y, mass.position.z,
-                        mass.velocity.x, mass.velocity.y, mass.velocity.z,
-                        acceleration.x, acceleration.y, acceleration.z,
-                        total_force.x, total_force.y, total_force.z
-                    );
+                    // F = ma -> a = F/m
+                    let acceleration = total_force / mass.mass;
+
+                    // Integracja Eulera z ograniczeniem prędkości
+                    mass.velocity += acceleration * sub_dt;
+
+                    // Ograniczenie maksymalnej prędkości (zapobieganie eksplozji)
+                    let max_velocity = 20.0; // Zmniejszone z 50 do 20 m/s
+                    let velocity_magnitude = mass.velocity.magnitude();
+                    if velocity_magnitude > max_velocity {
+                        mass.velocity = mass.velocity * (max_velocity / velocity_magnitude);
+                    }
+
+                    mass.position += mass.velocity * sub_dt;
+
+                    // Loguj tylko w ostatnim substep
+                    if step == substeps - 1 && should_log && (i == 0 || i == masses_len - 1 || i == mid_point) {
+                        let _ = writeln!(
+                            log_file,
+                            "Point {}: pos=({:.2}, {:.2}, {:.2}), vel=({:.2}, {:.2}, {:.2}), acc=({:.2}, {:.2}, {:.2}), force=({:.2}, {:.2}, {:.2})",
+                            i,
+                            mass.position.x, mass.position.y, mass.position.z,
+                            mass.velocity.x, mass.velocity.y, mass.velocity.z,
+                            acceleration.x, acceleration.y, acceleration.z,
+                            total_force.x, total_force.y, total_force.z
+                        );
+                    }
                 }
             }
         }
@@ -172,9 +182,9 @@ impl FishingRod {
         let mut system = MassSpringSystem::new(vec3(0.0, -9.81, 0.0));
 
         let segment_length = length / segment_count as f32;
-        let mass_per_segment = 0.1;
-        let stiffness = 500.0;
-        let damping = 5.0;
+        let mass_per_segment = 0.3; // Zwiększone z 0.1 do 0.3 kg (bardziej stabilne)
+        let stiffness = 100.0; // Zmniejszone z 500 do 100 N/m (mniej sztywne)
+        let damping = 15.0; // Zwiększone z 5 do 15 Ns/m (więcej tłumienia)
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;

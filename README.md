@@ -95,9 +95,11 @@ src/main.rs
 ### Wędka:
 - Długość: 3.0 jednostek
 - Liczba segmentów: 15
-- Masa segmentu: 0.1 kg
-- Sztywność sprężyny: 500.0 N/m
-- Tłumienie: 5.0 Ns/m
+- Masa segmentu: 0.3 kg (zwiększone dla stabilności)
+- Sztywność sprężyny: 100.0 N/m (zmniejszone z 500)
+- Tłumienie: 15.0 Ns/m (zwiększone z 5)
+- Substeps: 4 (lepsza stabilność numeryczna)
+- Max prędkość: 20 m/s (zmniejszone z 50)
 
 ### Kamera:
 - Pozycja startowa: (5, 3, 5)

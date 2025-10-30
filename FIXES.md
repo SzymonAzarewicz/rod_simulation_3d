@@ -75,13 +75,50 @@ Point 15: pos=(x, y, z), vel=(x, y, z), acc=(x, y, z), force=(x, y, z)
 
 ## Parametry Fizyczne
 
-### Obecne wartości:
-- **Masa segmentu:** 0.1 kg
-- **Sztywność sprężyny:** 500 N/m
-- **Tłumienie:** 5.0 Ns/m
+### DRUGA ITERACJA POPRAWEK (po analizie logów):
+
+**Problem zidentyfikowany z logów:**
+- Frame 30: przyspieszenia ~7000 m/s² (700G!)
+- Frame 180+: przyspieszenia do 12000 m/s² (1200G!)
+- Prędkości natychmiast osiągały limit 50 m/s
+- Siły rzędu 700-1200 N dla masy 0.1 kg = katastrofa
+
+**Przyczyna:** Sprężyny zbyt sztywne + masa zbyt mała = niestabilność numeryczna
+
+### Nowe wartości (v2):
+- **Masa segmentu:** 0.3 kg (↑ z 0.1, 3x cięższe)
+- **Sztywność sprężyny:** 100 N/m (↓ z 500, 5x mniejsza)
+- **Tłumienie:** 15.0 Ns/m (↑ z 5, 3x większe)
 - **Grawitacja:** -9.81 m/s²
-- **Max prędkość:** 50 m/s
+- **Max prędkość:** 20 m/s (↓ z 50)
 - **Siła wiatru:** 0.3-0.5 N (po stabilizacji)
+- **Substeps:** 4 (nowe! dt/4 dla każdego kroku)
+
+### Uzasadnienie zmian:
+
+**Masa 0.1 → 0.3 kg:**
+- Większa masa = mniejsze przyspieszenia przy tej samej sile
+- a = F/m, więc 3x większa masa = 3x mniejsze przyspieszenie
+- Bardziej stabilne numerycznie
+
+**Stiffness 500 → 100 N/m:**
+- Przy rozciągnięciu 0.5m: F = 100×0.5 = 50 N (zamiast 250 N)
+- Przyspieszenie: a = 50/0.3 = 167 m/s² (zamiast 2500 m/s²!)
+- 15x mniejsze przyspieszenie!
+
+**Damping 5 → 15 Ns/m:**
+- Większe tłumienie pochłania więcej energii
+- Szybsza stabilizacja oscylacji
+- Zapobiega drżeniom
+
+**Substeps 1 → 4:**
+- Zamiast jednego kroku 0.016s, robimy 4 kroki po 0.004s
+- Mniejszy krok czasowy = lepsza precyzja numeryczna
+- Sprężyny są przeliczane 4x częściej = bardziej dokładne siły
+
+**Max velocity 50 → 20 m/s:**
+- Bardziej realistyczny limit
+- Jeszcze większe bezpieczeństwo przed eksplozją
 
 ### Oczekiwane zachowanie:
 1. Pierwsze 2 sekundy: wędka opada pod wpływem grawitacji
