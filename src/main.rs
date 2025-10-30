@@ -236,13 +236,11 @@ fn main() {
         grid_lines.push(vec3(offset, 0.01, grid_size as f32 / 2.0 * grid_spacing));
     }
 
-    let grid_positions: Vec<f32> = grid_lines.iter().flat_map(|v| [v.x, v.y, v.z]).collect();
-
     let grid = Gm::new(
         Mesh::new(
             &context,
             &CpuMesh {
-                positions: Positions::F32(grid_positions),
+                positions: Positions::F32(grid_lines),
                 ..Default::default()
             },
         ),
@@ -286,16 +284,11 @@ fn main() {
             rod_vertices.push(rod_positions[i + 1]);
         }
 
-        let rod_positions_flat: Vec<f32> = rod_vertices
-            .iter()
-            .flat_map(|v| [v.x, v.y, v.z])
-            .collect();
-
         let rod_mesh = Gm::new(
             Mesh::new(
                 &context,
                 &CpuMesh {
-                    positions: Positions::F32(rod_positions_flat),
+                    positions: Positions::F32(rod_vertices),
                     ..Default::default()
                 },
             ),
