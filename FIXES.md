@@ -169,6 +169,54 @@ Prawdziwe wędki wędkarskie mają taką konstrukcję:
 3. Środek może się lekko wyginać
 4. Czubek (20% górnej części) elastycznie reaguje na siły wiatru
 
+## CZWARTA ITERACJA POPRAWEK (po testach użytkownika):
+
+**Zgłoszone problemy:**
+1. Wędka za nisko (punkt bazowy na ziemi)
+2. Jedna większa kula na ziemi (fixed point z radius=0.08)
+3. **GŁÓWNY PROBLEM:** Czubek wędki opada i ciągnie kolejne kule, potem anomalia
+
+**Analiza przyczyn:**
+- Czubek opadał mimo grawitacji = 0 → sprężyny ZA SŁABE!
+- Górna sekcja: 50 N/m - za słaba aby utrzymać sztywność
+- Substeps=4 mogły wprowadzać błędy akumulacji numerycznej
+- Brak wystarczająco szczegółowych logów początkowych klatek
+
+**Zastosowane poprawki:**
+
+1. **Podniesienie wędki:**
+   - base_position: (0, 0, 0) → (0, 1, 0)
+   - Wędka teraz od y=1.0 do y=4.0
+
+2. **Ujednolicenie kul:**
+   - Wszystkie kule radius=0.05 (usunięto większą kulę bazową)
+
+3. **Zwiększenie sztywności wszystkich sekcji:**
+   - Dolna 60%: 500 → **800 N/m** (+60%)
+   - Środkowa 20%: 200 → **400 N/m** (+100%)
+   - Górna 20%: 50 → **150 N/m** (+200%!) ← Kluczowa zmiana!
+
+4. **Zwiększenie tłumienia:**
+   - Dolna: 20 → 25 Ns/m
+   - Środkowa: 15 → 20 Ns/m
+   - Górna: 10 → 15 Ns/m
+
+5. **Zmniejszenie substeps:**
+   - 4 → 2 substeps
+   - Zmniejsza akumulację błędów numerycznych
+
+6. **Ulepszone logowanie:**
+   - Pierwsze 100 klatek: log co 10 klatek
+   - Pierwsze 10 klatek: wszystkie punkty
+   - Później: tylko kluczowe punkty (0, 9, 12, środek, ostatni)
+   - Format z wyrównaniem kolumn dla czytelności
+
+**Oczekiwany efekt:**
+- Wędka podniesiona nad podłogę (y=1.0 do 4.0)
+- Wszystkie kule jednakowe (brak dużej kuli bazowej)
+- Czubek NIE opada (3x większa sztywność!)
+- Logi pokazują szczegółowo pierwsze klatki dla debugowania
+
 ## Testy do wykonania
 
 1. **Uruchom symulację:**

@@ -97,25 +97,26 @@ src/main.rs
 - Liczba segmentów: 15
 - Masa segmentu: 0.3 kg
 - **Grawitacja: WYŁĄCZONA** (0.0 zamiast -9.81 m/s²)
-- Substeps: 4 (lepsza stabilność numeryczna)
+- Pozycja bazowa: (0, 1, 0) - podniesiona nad podłogę
+- Substeps: 2 (zmniejszone z 4 dla stabilności)
 - Max prędkość: 20 m/s
 
 #### 3-sekcyjna konstrukcja (jak prawdziwa wędka):
 1. **Dolna 60% (9 segmentów)** - SZTYWNA PODSTAWA
-   - Sztywność: 500.0 N/m
-   - Tłumienie: 20.0 Ns/m
+   - Sztywność: 800.0 N/m (zwiększone z 500)
+   - Tłumienie: 25.0 Ns/m
    - Kolor: ciemny brąz
    - Funkcja: stabilna rączka wędki
 
 2. **Środkowa 20% (3 segmenty)** - ŚREDNIA SEKCJA
-   - Sztywność: 200.0 N/m
-   - Tłumienie: 15.0 Ns/m
+   - Sztywność: 400.0 N/m (zwiększone z 200)
+   - Tłumienie: 20.0 Ns/m
    - Kolor: średni brąz
    - Funkcja: przejście między sztywnością a elastycznością
 
-3. **Górna 20% (3 segmenty)** - GIĘTKA KOŃCÓWKA
-   - Sztywność: 50.0 N/m
-   - Tłumienie: 10.0 Ns/m
+3. **Górna 20% (3 segmenty)** - ELASTYCZNA KOŃCÓWKA
+   - Sztywność: 150.0 N/m (zwiększone z 50)
+   - Tłumienie: 15.0 Ns/m
    - Kolor: jasny żółto-brązowy
    - Funkcja: elastyczny czubek reagujący na siły
 

@@ -79,15 +79,19 @@ impl MassSpringSystem {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Substeps dla lepszej stabilności numerycznej
-        let substeps = 4;
+        // Substeps dla lepszej stabilności numerycznej (zmniejszone z 4 do 2)
+        let substeps = 2;
         let sub_dt = dt / substeps as f32;
 
-        // Log co 30 klatek (0.5 sekundy przy 60 FPS)
-        let should_log = frame % 30 == 0;
+        // Log częściej na początku (co 10 klatek), potem co 30
+        let should_log = if frame <= 100 {
+            frame % 10 == 0 // Pierwsze 100 klatek - co 10
+        } else {
+            frame % 30 == 0 // Później - co 30
+        };
 
         if should_log {
-            let _ = writeln!(log_file, "\n=== Frame {} ===", frame);
+            let _ = writeln!(log_file, "\n=== Frame {} (time={:.2}s) ===", frame, frame as f32 * 0.016);
         }
 
         // Przechwyć długość przed pętlą (dla borrow checkera)
@@ -148,17 +152,28 @@ impl MassSpringSystem {
 
                     mass.position += mass.velocity * sub_dt;
 
-                    // Loguj tylko w ostatnim substep
-                    if step == substeps - 1 && should_log && (i == 0 || i == masses_len - 1 || i == mid_point) {
-                        let _ = writeln!(
-                            log_file,
-                            "Point {}: pos=({:.2}, {:.2}, {:.2}), vel=({:.2}, {:.2}, {:.2}), acc=({:.2}, {:.2}, {:.2}), force=({:.2}, {:.2}, {:.2})",
-                            i,
-                            mass.position.x, mass.position.y, mass.position.z,
-                            mass.velocity.x, mass.velocity.y, mass.velocity.z,
-                            acceleration.x, acceleration.y, acceleration.z,
-                            total_force.x, total_force.y, total_force.z
-                        );
+                    // Loguj tylko w ostatnim substep - więcej punktów w pierwszych 10 klatkach
+                    if step == substeps - 1 && should_log {
+                        let should_log_point = if frame <= 10 {
+                            // Pierwsze 10 klatek - loguj wszystkie punkty
+                            true
+                        } else {
+                            // Później - tylko kluczowe punkty (0, środek, ostatni, końce sekcji)
+                            i == 0 || i == masses_len - 1 || i == mid_point ||
+                            i == 9 || i == 12 // Końce sekcji
+                        };
+
+                        if should_log_point {
+                            let _ = writeln!(
+                                log_file,
+                                "Point {:2}: pos=({:6.2}, {:6.2}, {:6.2}), vel=({:6.2}, {:6.2}, {:6.2}), acc=({:6.2}, {:6.2}, {:6.2}), force=({:6.2}, {:6.2}, {:6.2})",
+                                i,
+                                mass.position.x, mass.position.y, mass.position.z,
+                                mass.velocity.x, mass.velocity.y, mass.velocity.z,
+                                acceleration.x, acceleration.y, acceleration.z,
+                                total_force.x, total_force.y, total_force.z
+                            );
+                        }
                     }
                 }
             }
@@ -188,17 +203,17 @@ impl FishingRod {
         // 3 RODZAJE SPRĘŻYN dla różnych sekcji wędki:
         // Dolna 60% (9 segmentów z 15) - BARDZO SZTYWNA (jak rączka wędki)
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 500.0; // Bardzo sztywna
-        let damping_base = 20.0;
+        let stiffness_base = 800.0; // Zwiększone z 500 - bardzo sztywna
+        let damping_base = 25.0;
 
         // Środkowa 20% (3 segmenty) - ŚREDNIO SZTYWNA
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 200.0; // Średnia sztywność
-        let damping_medium = 15.0;
+        let stiffness_medium = 400.0; // Zwiększone z 200
+        let damping_medium = 20.0;
 
-        // Górna 20% (3 segmenty) - GIĘTKA (czubek wędki)
-        let stiffness_tip = 50.0; // Giętka
-        let damping_tip = 10.0;
+        // Górna 20% (3 segmenty) - GIĘTKA ale nie ZA SŁABA
+        let stiffness_tip = 150.0; // Zwiększone z 50 - było za słabe!
+        let damping_tip = 15.0;
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;
@@ -342,8 +357,8 @@ fn main() {
         },
     );
 
-    // Twórz wędkę
-    let mut fishing_rod = FishingRod::new(vec3(0.0, 0.0, 0.0), 3.0, 15);
+    // Twórz wędkę - podniesiona wyżej (base na y=1.0 zamiast 0.0)
+    let mut fishing_rod = FishingRod::new(vec3(0.0, 1.0, 0.0), 3.0, 15);
 
     // Zmienna do symulacji czasu
     let mut time = 0.0f32;
@@ -402,7 +417,7 @@ fn main() {
         let medium_end = (total_points as f32 * 0.8).round() as usize; // 12
 
         for (i, pos) in rod_positions.iter().enumerate() {
-            let radius = if i == 0 { 0.08 } else { 0.05 }; // Większa kula u podstawy
+            let radius = 0.05; // Wszystkie kule tego samego rozmiaru
 
             // Kolor w zależności od sekcji wędki
             let color = if i == 0 {
