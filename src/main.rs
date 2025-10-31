@@ -218,9 +218,9 @@ impl FishingRod {
 
         // Górna 20% (3 segmenty, punkty 12-15) - FIZYCZNA KOŃCÓWKA!
         // Sprężyny: 12-13 (łączy kinematykę z fizyką), 13-14, 14-15
-        // Parametry dostrojone dla szybkiego nadążania + kontrolowane oscylacje
-        let stiffness_tip = 80.0;     // ZWIĘKSZONE z 15 → 80 (nadąża za kinematyką)
-        let damping_tip = 50.0;       // ZWIĘKSZONE z 30 → 50 (ζ ≈ 0.5, 2-3 oscylacje)
+        // Parametry dostrojone dla BARDZO szybkiego nadążania za kinematyką
+        let stiffness_tip = 400.0;    // ZNACZNIE ZWIĘKSZONE: 15 → 80 → 400 (mocne śledzenie)
+        let damping_tip = 150.0;      // ZNACZNIE ZWIĘKSZONE: 30 → 50 → 150 (stabilność, szybkie wygaszanie)
 
         // Punkty chwytów dla dwóch dłoni (realistyczne pozycje)
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
@@ -272,43 +272,23 @@ impl FishingRod {
     }
 
     // Ustaw pozycje punktów chwytów i KINEMATYCZNIE interpoluj pozostałe punkty
-    // Z zachowaniem równych odległości między punktami!
+    // Z zachowaniem SZTYWNYCH równych odległości 0.20 między punktami!
     fn set_grip_positions(&mut self, bottom_pos: Vec3, top_pos: Vec3) {
         let segment_length = 3.0 / (self.system.masses.len() - 1) as f32; // 0.20 dla 15 segmentów
 
-        // Ustaw punkty chwytów
-        self.system.masses[self.bottom_grip_index].position = bottom_pos;
-        self.system.masses[self.bottom_grip_index].velocity = Vec3::zero();
-
-        self.system.masses[self.top_grip_index].position = top_pos;
-        self.system.masses[self.top_grip_index].velocity = Vec3::zero();
-
-        // Oblicz kierunek wędki i pozycję punktu 12 (końca kinematycznej części)
+        // Oblicz kierunek wędki z pozycji chwytów (do orientacji)
         let direction = (top_pos - bottom_pos).normalize();
-        let segments_after_top_grip = 12 - self.top_grip_index; // 12 - 5 = 7 segmentów
-        let point_12_pos = top_pos + direction * segment_length * (segments_after_top_grip as f32);
 
-        // SEKCJA 1: Punkty między bottom_grip (0) a top_grip (5)
-        // Liniowa interpolacja - 5 segmentów
-        for i in 1..self.top_grip_index {
-            let t = i as f32 / self.top_grip_index as f32; // 0.2, 0.4, 0.6, 0.8
-            let pos = bottom_pos + (top_pos - bottom_pos) * t;
+        // KLUCZOWE: Umieść WSZYSTKIE punkty kinematyczne (0-12) w SZTYWNYCH odstępach 0.20
+        // Ignorujemy rzeczywistą odległość między chwytami - wędka ma stałą długość!
+        for i in 0..=12 {
+            let distance = segment_length * (i as f32);
+            let pos = bottom_pos + direction * distance;
             self.system.masses[i].position = pos;
             self.system.masses[i].velocity = Vec3::zero();
         }
 
-        // SEKCJA 2: Punkty między top_grip (5) a końcem kinematyki (12)
-        // Liniowa interpolacja - 7 segmentów
-        for i in (self.top_grip_index + 1)..=12 {
-            let steps = (i - self.top_grip_index) as f32;
-            let total_steps = segments_after_top_grip as f32;
-            let t = steps / total_steps; // 0.143, 0.286, ..., 1.0
-            let pos = top_pos + (point_12_pos - top_pos) * t;
-            self.system.masses[i].position = pos;
-            self.system.masses[i].velocity = Vec3::zero();
-        }
-
-        // SEKCJA 3: Końcówka fizyczna (13-15) - NIE RUSZAMY TUTAJ
+        // SEKCJA FIZYCZNA (13-15) - NIE RUSZAMY TUTAJ
         // Te punkty będą aktualizowane przez fizykę mass-spring
         // Ich początkowe pozycje są ustawione w konstruktorze
     }
