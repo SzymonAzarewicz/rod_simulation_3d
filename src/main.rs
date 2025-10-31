@@ -218,9 +218,9 @@ impl FishingRod {
 
         // Górna 20% (3 segmenty, punkty 12-15) - FIZYCZNA KOŃCÓWKA!
         // Sprężyny: 12-13 (łączy kinematykę z fizyką), 13-14, 14-15
-        // Parametry dostrojone dla realistycznej oscylacji podczas zamachu
-        let stiffness_tip = 15.0;     // Słaba ale nie ultra (pozwala ugięcie)
-        let damping_tip = 30.0;       // Umiarkowane (pozwala 1-2 oscylacje)
+        // Parametry dostrojone dla szybkiego nadążania + kontrolowane oscylacje
+        let stiffness_tip = 80.0;     // ZWIĘKSZONE z 15 → 80 (nadąża za kinematyką)
+        let damping_tip = 50.0;       // ZWIĘKSZONE z 30 → 50 (ζ ≈ 0.5, 2-3 oscylacje)
 
         // Punkty chwytów dla dwóch dłoni (realistyczne pozycje)
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
@@ -283,19 +283,27 @@ impl FishingRod {
         self.system.masses[self.top_grip_index].position = top_pos;
         self.system.masses[self.top_grip_index].velocity = Vec3::zero();
 
-        // SEKCJA 1: Punkty między chwytami (1-4) - równe odległości
-        let direction_bottom_to_top = (top_pos - bottom_pos).normalize();
+        // Oblicz kierunek wędki i pozycję punktu 12 (końca kinematycznej części)
+        let direction = (top_pos - bottom_pos).normalize();
+        let segments_after_top_grip = 12 - self.top_grip_index; // 12 - 5 = 7 segmentów
+        let point_12_pos = top_pos + direction * segment_length * (segments_after_top_grip as f32);
+
+        // SEKCJA 1: Punkty między bottom_grip (0) a top_grip (5)
+        // Liniowa interpolacja - 5 segmentów
         for i in 1..self.top_grip_index {
-            let pos = bottom_pos + direction_bottom_to_top * segment_length * (i as f32);
+            let t = i as f32 / self.top_grip_index as f32; // 0.2, 0.4, 0.6, 0.8
+            let pos = bottom_pos + (top_pos - bottom_pos) * t;
             self.system.masses[i].position = pos;
             self.system.masses[i].velocity = Vec3::zero();
         }
 
-        // SEKCJA 2: Punkty kinematyczne po top_grip (6-12) - kontynuacja kierunku
-        // Punkt 12 to ostatni kinematyczny punkt, będzie anchor dla fizycznej końcówki
+        // SEKCJA 2: Punkty między top_grip (5) a końcem kinematyki (12)
+        // Liniowa interpolacja - 7 segmentów
         for i in (self.top_grip_index + 1)..=12 {
-            let steps_from_top = (i - self.top_grip_index) as f32;
-            let pos = top_pos + direction_bottom_to_top * segment_length * steps_from_top;
+            let steps = (i - self.top_grip_index) as f32;
+            let total_steps = segments_after_top_grip as f32;
+            let t = steps / total_steps; // 0.143, 0.286, ..., 1.0
+            let pos = top_pos + (point_12_pos - top_pos) * t;
             self.system.masses[i].position = pos;
             self.system.masses[i].velocity = Vec3::zero();
         }
