@@ -220,9 +220,9 @@ impl FishingRod {
         let stiffness_tip = 1.25;     // ULTRA SŁABE (było 12.5 → teraz 1.25, 10x słabsze!)
         let damping_tip = 600.0;      // EKSTREMALNIE WYSOKIE (było 100 → teraz 600, 6x wyższe!)
 
-        // Punkty chwytów dla dwóch dłoni
+        // Punkty chwytów dla dwóch dłoni (realistyczne pozycje)
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
-        let top_grip_index = 10;    // Górny chwyt (~67% wysokości, punkt 10 z 15)
+        let top_grip_index = 5;     // Górny chwyt (~33% wysokości, punkt 5 z 15) - dolna część wędki
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;
@@ -269,25 +269,60 @@ impl FishingRod {
         }
     }
 
-    // Ustaw pozycje punktów chwytów (kontrolowane przez animację dłoni)
+    // Ustaw pozycje punktów chwytów i KINEMATYCZNIE interpoluj pozostałe punkty
     fn set_grip_positions(&mut self, bottom_pos: Vec3, top_pos: Vec3) {
+        // Ustaw punkty chwytów
         self.system.masses[self.bottom_grip_index].position = bottom_pos;
         self.system.masses[self.bottom_grip_index].velocity = Vec3::zero();
 
         self.system.masses[self.top_grip_index].position = top_pos;
         self.system.masses[self.top_grip_index].velocity = Vec3::zero();
+
+        // KINEMATYCZNA INTERPOLACJA: punkty między chwytami
+        // Sekcja 1: od bottom_grip (0) do top_grip (5)
+        let segment_count_bottom = self.top_grip_index - self.bottom_grip_index;
+        for i in 1..self.top_grip_index {
+            let t = i as f32 / segment_count_bottom as f32;
+            let pos = bottom_pos + (top_pos - bottom_pos) * t;
+            self.system.masses[i].position = pos;
+            self.system.masses[i].velocity = Vec3::zero();
+        }
+
+        // Sekcja 2: od top_grip (5) do końca (15)
+        let total_points = self.system.masses.len();
+        let segment_count_top = total_points - 1 - self.top_grip_index;
+
+        // Końcówka wędki - ekstrapoluj kierunek od bottom do top
+        let direction = (top_pos - bottom_pos).normalize();
+        let segment_length = 3.0 / (total_points - 1) as f32; // Długość wędki = 3.0
+
+        for i in (self.top_grip_index + 1)..total_points {
+            let steps_from_top = (i - self.top_grip_index) as f32;
+            let pos = top_pos + direction * segment_length * steps_from_top;
+            self.system.masses[i].position = pos;
+            self.system.masses[i].velocity = Vec3::zero();
+        }
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Oznacz punkty chwytów jako "fixed" podczas fizyki
-        self.system.masses[self.bottom_grip_index].fixed = true;
-        self.system.masses[self.top_grip_index].fixed = true;
+        // WYŁĄCZ FIZYKĘ - wszystkie punkty FIXED
+        // Zamiast physics simulation, używamy kinematycznej animacji
+        for mass in &mut self.system.masses {
+            mass.fixed = true;
+            mass.velocity = Vec3::zero(); // Zeruj prędkości dla bezpieczeństwa
+        }
 
-        self.system.update(dt, log_file, frame);
+        // Nie wywołuj physics update - nie potrzebujemy sprężyn!
+        // self.system.update(dt, log_file, frame);
 
-        // Po aktualizacji fizyki, odznacz jako "unfixed" (dla przyszłych zmian animacji)
-        self.system.masses[self.bottom_grip_index].fixed = false;
-        self.system.masses[self.top_grip_index].fixed = false;
+        // Log co 30 klatek dla monitorowania
+        if frame % 30 == 0 {
+            let _ = writeln!(log_file, "\n=== Frame {} (time={:.2}s) - KINEMATIC MODE ===", frame, frame as f32 * 0.016);
+            let _ = writeln!(log_file, "Point 0: pos=({:6.2}, {:6.2}, {:6.2})",
+                self.system.masses[0].position.x, self.system.masses[0].position.y, self.system.masses[0].position.z);
+            let _ = writeln!(log_file, "Point 5: pos=({:6.2}, {:6.2}, {:6.2})",
+                self.system.masses[5].position.x, self.system.masses[5].position.y, self.system.masses[5].position.z);
+        }
     }
 
     fn get_positions(&self) -> Vec<Vec3> {
@@ -434,11 +469,11 @@ fn main() {
 
         // Pozycje startowe (pozycja spoczynkowa)
         let bottom_start = vec3(0.0, 1.0, 0.0);
-        let top_start = vec3(0.0, 3.0, 0.0);
+        let top_start = vec3(0.0, 2.0, 0.0);  // Punkt 5 = 33% wysokości = y=2.0
 
         // Pozycje końcowe (po zamachu) - ZMNIEJSZONE AMPLITUDY dla większej stabilności
         let bottom_end = vec3(0.3, 0.8, 0.6);    // Pcha do przodu, lekko w dół (delikatniej!)
-        let top_end = vec3(-0.3, 3.5, -0.5);     // Ciągnie w tył, lekko w górę (delikatniej!)
+        let top_end = vec3(-0.2, 2.3, -0.4);     // Ciągnie w tył, lekko w górę (delikatniej, niżej!)
 
         let (bottom_pos, top_pos) = if !casting_active {
             // STAN SPOCZYNKU - wędka stoi w pionie, czeka na klawisz 'S'
@@ -508,8 +543,8 @@ fn main() {
             // Kolor w zależności od sekcji wędki i punktów chwytów
             let color = if i == 0 {
                 Srgba::new(200, 50, 50, 255) // Czerwony - dolny chwyt (bottom hand)
-            } else if i == 10 {
-                Srgba::new(50, 100, 200, 255) // Niebieski - górny chwyt (top hand)
+            } else if i == 5 {
+                Srgba::new(50, 100, 200, 255) // Niebieski - górny chwyt (top hand, punkt 5)
             } else if i <= stiff_end {
                 Srgba::new(80, 40, 20, 255) // Ciemny brąz - dolna 60% (sztywna)
             } else if i <= medium_end {
