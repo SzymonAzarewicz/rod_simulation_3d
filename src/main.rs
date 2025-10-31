@@ -79,8 +79,8 @@ impl MassSpringSystem {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Substeps dla lepszej stabilności numerycznej (ZWIĘKSZONE z 2 do 8!)
-        let substeps = 8;
+        // Substeps dla lepszej stabilności numerycznej (ZWIĘKSZONE do 16!)
+        let substeps = 16;
         let sub_dt = dt / substeps as f32;
 
         // Log częściej na początku (co 10 klatek), potem co 30
@@ -202,22 +202,23 @@ impl FishingRod {
         let segment_length = length / segment_count as f32;
         let mass_per_segment = 0.3;
 
-        // 3 RODZAJE SPRĘŻYN - ZBALANSOWANE dla stabilności + animacji!
-        // Średnia sztywność + wysokie tłumienie = stabilny ruch
+        // 3 RODZAJE SPRĘŻYN - ULTRA SŁABE + EKSTREMALNIE WYSOKIE TŁUMIENIE!
+        // Strategia: Sprężyny tylko utrzymują luźny kształt, tłumienie robi całą robotę
+        // Cel: Całkowicie wyeliminować oscylacje, system ultra-stabilny
 
-        // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa
+        // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa (relatywnie)
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 50.0;   // Średnia sztywność (była 100 → 10 → teraz 50)
-        let damping_base = 200.0;    // Wysokie tłumienie (było 100 → 500 → teraz 200)
+        let stiffness_base = 5.0;     // ULTRA SŁABE (było 50 → teraz 5, 10x słabsze!)
+        let damping_base = 1000.0;    // EKSTREMALNIE WYSOKIE (było 200 → teraz 1000, 5x wyższe!)
 
         // Środkowa 20% (3 segmenty) - ŚREDNIA sekcja
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 25.0;  // Średnia sztywność (było 50 → 5 → teraz 25)
-        let damping_medium = 150.0;   // Wysokie tłumienie (było 80 → 400 → teraz 150)
+        let stiffness_medium = 2.5;   // ULTRA SŁABE (było 25 → teraz 2.5, 10x słabsze!)
+        let damping_medium = 800.0;   // EKSTREMALNIE WYSOKIE (było 150 → teraz 800, 5x wyższe!)
 
         // Górna 20% (3 segmenty) - ELASTYCZNA końcówka
-        let stiffness_tip = 12.5;     // Średnia sztywność (było 25 → 2.5 → teraz 12.5)
-        let damping_tip = 100.0;      // Wysokie tłumienie (było 60 → 300 → teraz 100)
+        let stiffness_tip = 1.25;     // ULTRA SŁABE (było 12.5 → teraz 1.25, 10x słabsze!)
+        let damping_tip = 600.0;      // EKSTREMALNIE WYSOKIE (było 100 → teraz 600, 6x wyższe!)
 
         // Punkty chwytów dla dwóch dłoni
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
@@ -395,7 +396,7 @@ fn main() {
     // Sterowanie animacją zamachu
     let mut casting_active = false;      // Czy zamach jest aktywny
     let mut cast_start_time = 0.0f32;    // Kiedy rozpoczął się zamach
-    let cast_duration = 1.5;              // Czas trwania zamachu w sekundach
+    let cast_duration = 3.0;              // Czas trwania zamachu w sekundach (wolniej = stabilniej)
 
     // Pętla renderowania
     window.render_loop(move |mut frame_input| {
@@ -435,9 +436,9 @@ fn main() {
         let bottom_start = vec3(0.0, 1.0, 0.0);
         let top_start = vec3(0.0, 3.0, 0.0);
 
-        // Pozycje końcowe (po zamachu)
-        let bottom_end = vec3(0.5, 0.7, 1.0);    // Pcha do przodu, lekko w dół
-        let top_end = vec3(-0.4, 3.6, -0.8);     // Ciągnie w tył, lekko w górę
+        // Pozycje końcowe (po zamachu) - ZMNIEJSZONE AMPLITUDY dla większej stabilności
+        let bottom_end = vec3(0.3, 0.8, 0.6);    // Pcha do przodu, lekko w dół (delikatniej!)
+        let top_end = vec3(-0.3, 3.5, -0.5);     // Ciągnie w tył, lekko w górę (delikatniej!)
 
         let (bottom_pos, top_pos) = if !casting_active {
             // STAN SPOCZYNKU - wędka stoi w pionie, czeka na klawisz 'S'
