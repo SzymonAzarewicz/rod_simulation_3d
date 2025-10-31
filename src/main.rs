@@ -278,7 +278,15 @@ impl FishingRod {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
+        // Oznacz punkty chwytów jako "fixed" podczas fizyki
+        self.system.masses[self.bottom_grip_index].fixed = true;
+        self.system.masses[self.top_grip_index].fixed = true;
+
         self.system.update(dt, log_file, frame);
+
+        // Po aktualizacji fizyki, odznacz jako "unfixed" (dla przyszłych zmian animacji)
+        self.system.masses[self.bottom_grip_index].fixed = false;
+        self.system.masses[self.top_grip_index].fixed = false;
     }
 
     fn get_positions(&self) -> Vec<Vec3> {
@@ -384,31 +392,59 @@ fn main() {
     let mut time = 0.0f32;
     let mut frame_count = 0u32;
 
+    // Sterowanie animacją zamachu
+    let mut casting_active = false;      // Czy zamach jest aktywny
+    let mut cast_start_time = 0.0f32;    // Kiedy rozpoczął się zamach
+    let cast_duration = 1.5;              // Czas trwania zamachu w sekundach
+
     // Pętla renderowania
     window.render_loop(move |mut frame_input| {
         let dt = 0.016; // ~60 FPS
         time += dt;
         frame_count += 1;
 
-        // ANIMACJA ZAMACHU WĘDKĄ (2 dłonie) - Z POCZĄTKOWĄ STABILIZACJĄ
+        // Obsługa klawiszy
+        for event in frame_input.events.iter() {
+            if let three_d::Event::KeyPress { kind, .. } = event {
+                match *kind {
+                    three_d::Key::S => {
+                        // Klawisz 'S' - rozpocznij zamach
+                        if !casting_active {
+                            casting_active = true;
+                            cast_start_time = time;
+                            writeln!(log_file, "\n==========================================").unwrap();
+                            writeln!(log_file, ">>> CASTING STARTED at t={:.2}s (frame {}) <<<", time, frame_count).unwrap();
+                            writeln!(log_file, "==========================================\n").unwrap();
+                        }
+                    },
+                    three_d::Key::R => {
+                        // Klawisz 'R' - reset do pozycji początkowej
+                        if casting_active {
+                            casting_active = false;
+                            writeln!(log_file, "\n>>> CASTING RESET at t={:.2}s (frame {}) <<<\n", time, frame_count).unwrap();
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
 
-        let stabilization_time = 3.0; // Pierwszych 3 sekundy = stabilizacja
-        let cast_duration = 1.5;      // Czas trwania zamachu w sekundach
+        // ANIMACJA ZAMACHU WĘDKĄ (2 dłonie) - URUCHAMIANA KLAWISZEM 'S'
 
-        // Pozycje startowe (dla stabilizacji i początku animacji)
+        // Pozycje startowe (pozycja spoczynkowa)
         let bottom_start = vec3(0.0, 1.0, 0.0);
         let top_start = vec3(0.0, 3.0, 0.0);
 
-        // Pozycje końcowe (dla zamachu)
+        // Pozycje końcowe (po zamachu)
         let bottom_end = vec3(0.5, 0.7, 1.0);    // Pcha do przodu, lekko w dół
         let top_end = vec3(-0.4, 3.6, -0.8);     // Ciągnie w tył, lekko w górę
 
-        let (bottom_pos, top_pos) = if time < stabilization_time {
-            // FAZA 1: STABILIZACJA - wędka stoi w pionie
+        let (bottom_pos, top_pos) = if !casting_active {
+            // STAN SPOCZYNKU - wędka stoi w pionie, czeka na klawisz 'S'
             (bottom_start, top_start)
         } else {
-            // FAZA 2: ANIMACJA ZAMACHU
-            let anim_time = time - stabilization_time;
+            // ZAMACH W TRAKCIE - animacja od początku do końca
+            let anim_time = time - cast_start_time;
             let t = (anim_time / cast_duration).min(1.0); // Normalizowane 0..1
 
             // Smooth easing (ease-in-out cubic)
@@ -497,10 +533,17 @@ fn main() {
             spheres.push(sphere);
         }
 
-        // Renderuj scenę
+        // Renderuj scenę z wizualnym feedbackiem zamachu
+        // Zmień kolor tła podczas zamachu (jaśniejsze niebo = casting aktywny)
+        let (bg_r, bg_g, bg_b) = if casting_active {
+            (0.6, 0.8, 1.0)  // Jaśniejsze niebo podczas zamachu
+        } else {
+            (0.5, 0.7, 1.0)  // Normalne niebo
+        };
+
         frame_input
             .screen()
-            .clear(ClearState::color_and_depth(0.5, 0.7, 1.0, 1.0, 1.0))
+            .clear(ClearState::color_and_depth(bg_r, bg_g, bg_b, 1.0, 1.0))
             .render(&camera, &board, &[&light])
             .render(&camera, &grid, &[&light])
             .render(&camera, &rod_mesh, &[&light])
