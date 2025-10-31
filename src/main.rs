@@ -79,8 +79,8 @@ impl MassSpringSystem {
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // Substeps dla lepszej stabilności numerycznej (ZWIĘKSZONE do 16!)
-        let substeps = 16;
+        // Substeps - umiarkowana liczba dla hybrydowego systemu
+        let substeps = 8;
         let sub_dt = dt / substeps as f32;
 
         // Log częściej na początku (co 10 klatek), potem co 30
@@ -91,7 +91,7 @@ impl MassSpringSystem {
         };
 
         if should_log {
-            let _ = writeln!(log_file, "\n=== Frame {} (time={:.2}s) ===", frame, frame as f32 * 0.016);
+            let _ = writeln!(log_file, "\n=== Frame {} (time={:.2}s) HYBRID: 0-12 kinematic, 13-15 physics ===", frame, frame as f32 * 0.016);
         }
 
         // Przechwyć długość przed pętlą (dla borrow checkera)
@@ -158,16 +158,16 @@ impl MassSpringSystem {
                             // Pierwsze 10 klatek - loguj wszystkie punkty
                             true
                         } else {
-                            // Później - tylko kluczowe punkty (0, środek, ostatni, końce sekcji)
-                            i == 0 || i == masses_len - 1 || i == mid_point ||
-                            i == 9 || i == 12 // Końce sekcji
+                            // Później - kluczowe punkty + fizyczna końcówka
+                            i == 0 || i == 12 || i == 13 || i == 15 // Punkty 0, 12 (anchor), 13, 15 (końcówka)
                         };
 
                         if should_log_point {
+                            let point_type = if i <= 12 { "KIN" } else { "PHY" };
                             let _ = writeln!(
                                 log_file,
-                                "Point {:2}: pos=({:6.2}, {:6.2}, {:6.2}), vel=({:6.2}, {:6.2}, {:6.2}), acc=({:6.2}, {:6.2}, {:6.2}), force=({:6.2}, {:6.2}, {:6.2})",
-                                i,
+                                "Point {:2} [{}]: pos=({:6.2}, {:6.2}, {:6.2}), vel=({:6.2}, {:6.2}, {:6.2}), acc=({:6.2}, {:6.2}, {:6.2}), force=({:6.2}, {:6.2}, {:6.2})",
+                                i, point_type,
                                 mass.position.x, mass.position.y, mass.position.z,
                                 mass.velocity.x, mass.velocity.y, mass.velocity.z,
                                 acceleration.x, acceleration.y, acceleration.z,
@@ -202,23 +202,25 @@ impl FishingRod {
         let segment_length = length / segment_count as f32;
         let mass_per_segment = 0.3;
 
-        // 3 RODZAJE SPRĘŻYN - ULTRA SŁABE + EKSTREMALNIE WYSOKIE TŁUMIENIE!
-        // Strategia: Sprężyny tylko utrzymują luźny kształt, tłumienie robi całą robotę
-        // Cel: Całkowicie wyeliminować oscylacje, system ultra-stabilny
+        // 3 RODZAJE SPRĘŻYN - HYBRYDOWE PODEJŚCIE:
+        // Dolne 80% (0-12): NIE UŻYWANE - te punkty są kinematyczne
+        // Górne 20% (13-15): FIZYCZNE - muszą oscylować dla realistycznego ugięcia
 
-        // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa (relatywnie)
+        // Dolna 60% (9 segmentów, punkty 0-8) - nie używane (kinematyka)
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 5.0;     // ULTRA SŁABE (było 50 → teraz 5, 10x słabsze!)
-        let damping_base = 1000.0;    // EKSTREMALNIE WYSOKIE (było 200 → teraz 1000, 5x wyższe!)
+        let stiffness_base = 5.0;
+        let damping_base = 1000.0;
 
-        // Środkowa 20% (3 segmenty) - ŚREDNIA sekcja
+        // Środkowa 20% (3 segmenty, punkty 9-11) - nie używane (kinematyka)
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 2.5;   // ULTRA SŁABE (było 25 → teraz 2.5, 10x słabsze!)
-        let damping_medium = 800.0;   // EKSTREMALNIE WYSOKIE (było 150 → teraz 800, 5x wyższe!)
+        let stiffness_medium = 2.5;
+        let damping_medium = 800.0;
 
-        // Górna 20% (3 segmenty) - ELASTYCZNA końcówka
-        let stiffness_tip = 1.25;     // ULTRA SŁABE (było 12.5 → teraz 1.25, 10x słabsze!)
-        let damping_tip = 600.0;      // EKSTREMALNIE WYSOKIE (było 100 → teraz 600, 6x wyższe!)
+        // Górna 20% (3 segmenty, punkty 12-15) - FIZYCZNA KOŃCÓWKA!
+        // Sprężyny: 12-13 (łączy kinematykę z fizyką), 13-14, 14-15
+        // Parametry dostrojone dla realistycznej oscylacji podczas zamachu
+        let stiffness_tip = 15.0;     // Słaba ale nie ultra (pozwala ugięcie)
+        let damping_tip = 30.0;       // Umiarkowane (pozwala 1-2 oscylacje)
 
         // Punkty chwytów dla dwóch dłoni (realistyczne pozycje)
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
@@ -270,7 +272,10 @@ impl FishingRod {
     }
 
     // Ustaw pozycje punktów chwytów i KINEMATYCZNIE interpoluj pozostałe punkty
+    // Z zachowaniem równych odległości między punktami!
     fn set_grip_positions(&mut self, bottom_pos: Vec3, top_pos: Vec3) {
+        let segment_length = 3.0 / (self.system.masses.len() - 1) as f32; // 0.20 dla 15 segmentów
+
         // Ustaw punkty chwytów
         self.system.masses[self.bottom_grip_index].position = bottom_pos;
         self.system.masses[self.bottom_grip_index].velocity = Vec3::zero();
@@ -278,51 +283,45 @@ impl FishingRod {
         self.system.masses[self.top_grip_index].position = top_pos;
         self.system.masses[self.top_grip_index].velocity = Vec3::zero();
 
-        // KINEMATYCZNA INTERPOLACJA: punkty między chwytami
-        // Sekcja 1: od bottom_grip (0) do top_grip (5)
-        let segment_count_bottom = self.top_grip_index - self.bottom_grip_index;
+        // SEKCJA 1: Punkty między chwytami (1-4) - równe odległości
+        let direction_bottom_to_top = (top_pos - bottom_pos).normalize();
         for i in 1..self.top_grip_index {
-            let t = i as f32 / segment_count_bottom as f32;
-            let pos = bottom_pos + (top_pos - bottom_pos) * t;
+            let pos = bottom_pos + direction_bottom_to_top * segment_length * (i as f32);
             self.system.masses[i].position = pos;
             self.system.masses[i].velocity = Vec3::zero();
         }
 
-        // Sekcja 2: od top_grip (5) do końca (15)
-        let total_points = self.system.masses.len();
-        let segment_count_top = total_points - 1 - self.top_grip_index;
-
-        // Końcówka wędki - ekstrapoluj kierunek od bottom do top
-        let direction = (top_pos - bottom_pos).normalize();
-        let segment_length = 3.0 / (total_points - 1) as f32; // Długość wędki = 3.0
-
-        for i in (self.top_grip_index + 1)..total_points {
+        // SEKCJA 2: Punkty kinematyczne po top_grip (6-12) - kontynuacja kierunku
+        // Punkt 12 to ostatni kinematyczny punkt, będzie anchor dla fizycznej końcówki
+        for i in (self.top_grip_index + 1)..=12 {
             let steps_from_top = (i - self.top_grip_index) as f32;
-            let pos = top_pos + direction * segment_length * steps_from_top;
+            let pos = top_pos + direction_bottom_to_top * segment_length * steps_from_top;
             self.system.masses[i].position = pos;
             self.system.masses[i].velocity = Vec3::zero();
         }
+
+        // SEKCJA 3: Końcówka fizyczna (13-15) - NIE RUSZAMY TUTAJ
+        // Te punkty będą aktualizowane przez fizykę mass-spring
+        // Ich początkowe pozycje są ustawione w konstruktorze
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
-        // WYŁĄCZ FIZYKĘ - wszystkie punkty FIXED
-        // Zamiast physics simulation, używamy kinematycznej animacji
-        for mass in &mut self.system.masses {
-            mass.fixed = true;
-            mass.velocity = Vec3::zero(); // Zeruj prędkości dla bezpieczeństwa
+        // HYBRYDOWY SYSTEM:
+        // Punkty 0-12: KINEMATYCZNE (fixed) - nie ruszane przez fizykę
+        // Punkty 13-15: FIZYCZNE (not fixed) - mass-spring physics
+
+        for i in 0..=12 {
+            self.system.masses[i].fixed = true;
+            self.system.masses[i].velocity = Vec3::zero();
         }
 
-        // Nie wywołuj physics update - nie potrzebujemy sprężyn!
-        // self.system.update(dt, log_file, frame);
-
-        // Log co 30 klatek dla monitorowania
-        if frame % 30 == 0 {
-            let _ = writeln!(log_file, "\n=== Frame {} (time={:.2}s) - KINEMATIC MODE ===", frame, frame as f32 * 0.016);
-            let _ = writeln!(log_file, "Point 0: pos=({:6.2}, {:6.2}, {:6.2})",
-                self.system.masses[0].position.x, self.system.masses[0].position.y, self.system.masses[0].position.z);
-            let _ = writeln!(log_file, "Point 5: pos=({:6.2}, {:6.2}, {:6.2})",
-                self.system.masses[5].position.x, self.system.masses[5].position.y, self.system.masses[5].position.z);
+        for i in 13..self.system.masses.len() {
+            self.system.masses[i].fixed = false;
+            // Velocity nie zerowane - potrzebna dla fizyki!
         }
+
+        // WŁĄCZ physics update - sprężyny będą działać na końcówkę (13-15)
+        self.system.update(dt, log_file, frame);
     }
 
     fn get_positions(&self) -> Vec<Vec3> {
