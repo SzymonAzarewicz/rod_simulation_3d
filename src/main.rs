@@ -159,7 +159,7 @@ impl MassSpringSystem {
                             true
                         } else {
                             // Później - kluczowe punkty + fizyczna końcówka
-                            i == 0 || i == 12 || i == 13 || i == 15 // Punkty 0, 12 (anchor), 13, 15 (końcówka)
+                            i == 0 || i == 5 || i == 12 || i == 13 || i == 14 || i == 15 // Punkty 0 (red grip), 5 (blue grip), 12 (anchor), 13-15 (physics tip)
                         };
 
                         if should_log_point {
