@@ -202,22 +202,22 @@ impl FishingRod {
         let segment_length = length / segment_count as f32;
         let mass_per_segment = 0.3;
 
-        // 3 RODZAJE SPRĘŻYN - ULTRA SŁABE dla pełnej stabilności!
-        // Sprężyny tylko utrzymują kształt, tłumienie robi całą robotę
+        // 3 RODZAJE SPRĘŻYN - ZBALANSOWANE dla stabilności + animacji!
+        // Średnia sztywność + wysokie tłumienie = stabilny ruch
 
         // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 10.0;  // ULTRA SŁABE (10x mniej niż 100!)
-        let damping_base = 500.0;   // ULTRA WYSOKIE (5x więcej!)
+        let stiffness_base = 50.0;   // Średnia sztywność (była 100 → 10 → teraz 50)
+        let damping_base = 200.0;    // Wysokie tłumienie (było 100 → 500 → teraz 200)
 
         // Środkowa 20% (3 segmenty) - ŚREDNIA sekcja
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 5.0;  // ULTRA SŁABE
-        let damping_medium = 400.0;  // ULTRA WYSOKIE
+        let stiffness_medium = 25.0;  // Średnia sztywność (było 50 → 5 → teraz 25)
+        let damping_medium = 150.0;   // Wysokie tłumienie (było 80 → 400 → teraz 150)
 
         // Górna 20% (3 segmenty) - ELASTYCZNA końcówka
-        let stiffness_tip = 2.5;  // ULTRA SŁABE
-        let damping_tip = 300.0;  // ULTRA WYSOKIE
+        let stiffness_tip = 12.5;     // Średnia sztywność (było 25 → 2.5 → teraz 12.5)
+        let damping_tip = 100.0;      // Wysokie tłumienie (było 60 → 300 → teraz 100)
 
         // Punkty chwytów dla dwóch dłoni
         let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
@@ -390,30 +390,42 @@ fn main() {
         time += dt;
         frame_count += 1;
 
-        // ANIMACJA ZAMACHU WĘDKĄ (2 dłonie)
-        // Bottom hand: dolny uchwyt, pcha do przodu i w dół
-        // Top hand: górny chwyt (~67% wysokości), ciągnie w tył i górę
+        // ANIMACJA ZAMACHU WĘDKĄ (2 dłonie) - Z POCZĄTKOWĄ STABILIZACJĄ
 
-        let cast_duration = 1.5; // Czas trwania zamachu w sekundach
-        let t = (time / cast_duration).min(1.0); // Normalizowane 0..1
-        let ease_t = if t < 1.0 {
-            // Smooth easing (ease-in-out)
-            let t2 = t * t;
-            let t3 = t2 * t;
-            3.0 * t2 - 2.0 * t3
+        let stabilization_time = 3.0; // Pierwszych 3 sekundy = stabilizacja
+        let cast_duration = 1.5;      // Czas trwania zamachu w sekundach
+
+        // Pozycje startowe (dla stabilizacji i początku animacji)
+        let bottom_start = vec3(0.0, 1.0, 0.0);
+        let top_start = vec3(0.0, 3.0, 0.0);
+
+        // Pozycje końcowe (dla zamachu)
+        let bottom_end = vec3(0.5, 0.7, 1.0);    // Pcha do przodu, lekko w dół
+        let top_end = vec3(-0.4, 3.6, -0.8);     // Ciągnie w tył, lekko w górę
+
+        let (bottom_pos, top_pos) = if time < stabilization_time {
+            // FAZA 1: STABILIZACJA - wędka stoi w pionie
+            (bottom_start, top_start)
         } else {
-            1.0
+            // FAZA 2: ANIMACJA ZAMACHU
+            let anim_time = time - stabilization_time;
+            let t = (anim_time / cast_duration).min(1.0); // Normalizowane 0..1
+
+            // Smooth easing (ease-in-out cubic)
+            let ease_t = if t < 1.0 {
+                let t2 = t * t;
+                let t3 = t2 * t;
+                3.0 * t2 - 2.0 * t3
+            } else {
+                1.0
+            };
+
+            // Interpoluj pozycje
+            let bottom = bottom_start + (bottom_end - bottom_start) * ease_t;
+            let top = top_start + (top_end - top_start) * ease_t;
+
+            (bottom, top)
         };
-
-        // Pozycja BOTTOM HAND (dolna dłoń przy uchwycie)
-        let bottom_start = vec3(0.0, 1.0, 0.0);          // Pozycja początkowa
-        let bottom_end = vec3(0.8, 0.6, 1.5);            // Pcha do przodu, w dół i na bok
-        let bottom_pos = bottom_start + (bottom_end - bottom_start) * ease_t;
-
-        // Pozycja TOP HAND (górna dłoń ~67% wysokości)
-        let top_start = vec3(0.0, 3.0, 0.0);             // Pozycja początkowa (punkt 10)
-        let top_end = vec3(-0.6, 3.8, -1.2);             // Ciągnie w tył, w górę i na bok
-        let top_pos = top_start + (top_end - top_start) * ease_t;
 
         // Ustaw pozycje chwytów PRZED symulacją
         fishing_rod.set_grip_positions(bottom_pos, top_pos);
@@ -456,9 +468,11 @@ fn main() {
         for (i, pos) in rod_positions.iter().enumerate() {
             let radius = 0.05; // Wszystkie kule tego samego rozmiaru
 
-            // Kolor w zależności od sekcji wędki
+            // Kolor w zależności od sekcji wędki i punktów chwytów
             let color = if i == 0 {
-                Srgba::new(200, 50, 50, 255) // Czerwony - podstawa (fixed point)
+                Srgba::new(200, 50, 50, 255) // Czerwony - dolny chwyt (bottom hand)
+            } else if i == 10 {
+                Srgba::new(50, 100, 200, 255) // Niebieski - górny chwyt (top hand)
             } else if i <= stiff_end {
                 Srgba::new(80, 40, 20, 255) // Ciemny brąz - dolna 60% (sztywna)
             } else if i <= medium_end {
