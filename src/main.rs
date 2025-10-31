@@ -186,10 +186,12 @@ impl MassSpringSystem {
     }
 }
 
-// Model wędki
+// Model wędki z kontrolą dwoma dłońmi
 struct FishingRod {
     system: MassSpringSystem,
     segment_count: usize,
+    bottom_grip_index: usize, // Indeks punktu trzymanego dolną dłonią (przy uchwycie)
+    top_grip_index: usize,    // Indeks punktu trzymanego górną dłonią (wyżej na wędce)
 }
 
 impl FishingRod {
@@ -200,22 +202,26 @@ impl FishingRod {
         let segment_length = length / segment_count as f32;
         let mass_per_segment = 0.3;
 
-        // 3 RODZAJE SPRĘŻYN dla różnych sekcji wędki:
-        // DRASTYCZNIE ZMNIEJSZONA sztywność + ZWIĘKSZONE tłumienie dla stabilności!
+        // 3 RODZAJE SPRĘŻYN - ULTRA SŁABE dla pełnej stabilności!
+        // Sprężyny tylko utrzymują kształt, tłumienie robi całą robotę
 
         // Dolna 60% (9 segmentów z 15) - SZTYWNA podstawa
         let stiff_section_end = (segment_count as f32 * 0.6).round() as usize; // 9
-        let stiffness_base = 100.0; // ZMNIEJSZONE z 800 (8x mniej!)
-        let damping_base = 100.0;   // ZWIĘKSZONE z 25 (4x więcej!)
+        let stiffness_base = 10.0;  // ULTRA SŁABE (10x mniej niż 100!)
+        let damping_base = 500.0;   // ULTRA WYSOKIE (5x więcej!)
 
         // Środkowa 20% (3 segmenty) - ŚREDNIA sekcja
         let medium_section_end = (segment_count as f32 * 0.8).round() as usize; // 12
-        let stiffness_medium = 50.0; // ZMNIEJSZONE z 400 (8x mniej!)
-        let damping_medium = 80.0;   // ZWIĘKSZONE z 20 (4x więcej!)
+        let stiffness_medium = 5.0;  // ULTRA SŁABE
+        let damping_medium = 400.0;  // ULTRA WYSOKIE
 
         // Górna 20% (3 segmenty) - ELASTYCZNA końcówka
-        let stiffness_tip = 25.0; // ZMNIEJSZONE z 150 (6x mniej!)
-        let damping_tip = 60.0;   // ZWIĘKSZONE z 15 (4x więcej!)
+        let stiffness_tip = 2.5;  // ULTRA SŁABE
+        let damping_tip = 300.0;  // ULTRA WYSOKIE
+
+        // Punkty chwytów dla dwóch dłoni
+        let bottom_grip_index = 0;  // Dolny uchwyt (podstawa wędki)
+        let top_grip_index = 10;    // Górny chwyt (~67% wysokości, punkt 10 z 15)
 
         // Twórz punkty masy wzdłuż wędki
         let mut previous_index = None;
@@ -224,7 +230,8 @@ impl FishingRod {
         for i in 0..=segment_count {
             let t = i as f32 / segment_count as f32;
             let position = base_position + vec3(0.0, length * t, 0.0);
-            let is_fixed = i == 0; // Pierwszy punkt jest nieruchomy (podstawa)
+            // ŻADEN punkt nie jest "fixed" - wszystkie są kontrolowane lub swobodne
+            let is_fixed = false;
 
             let index = system.add_mass(MassPoint::new(position, mass_per_segment, is_fixed));
 
@@ -256,7 +263,18 @@ impl FishingRod {
         Self {
             system,
             segment_count,
+            bottom_grip_index,
+            top_grip_index,
         }
+    }
+
+    // Ustaw pozycje punktów chwytów (kontrolowane przez animację dłoni)
+    fn set_grip_positions(&mut self, bottom_pos: Vec3, top_pos: Vec3) {
+        self.system.masses[self.bottom_grip_index].position = bottom_pos;
+        self.system.masses[self.bottom_grip_index].velocity = Vec3::zero();
+
+        self.system.masses[self.top_grip_index].position = top_pos;
+        self.system.masses[self.top_grip_index].velocity = Vec3::zero();
     }
 
     fn update(&mut self, dt: f32, log_file: &mut std::fs::File, frame: u32) {
@@ -372,18 +390,33 @@ fn main() {
         time += dt;
         frame_count += 1;
 
-        // WIATR TYMCZASOWO WYŁĄCZONY - najpierw system musi być stabilny bez sił zewnętrznych
-        // Można włączyć po stabilizacji odkomentowując poniżej:
-        /*
-        if time > 5.0 { // Zacznij dopiero po 5 sekundach pełnej stabilizacji
-            let wind_force = vec3(
-                (time * 2.0).sin() * 0.2,  // Bardzo małe siły
-                0.0,
-                (time * 3.0).cos() * 0.15,
-            );
-            fishing_rod.apply_force_to_tip(wind_force);
-        }
-        */
+        // ANIMACJA ZAMACHU WĘDKĄ (2 dłonie)
+        // Bottom hand: dolny uchwyt, pcha do przodu i w dół
+        // Top hand: górny chwyt (~67% wysokości), ciągnie w tył i górę
+
+        let cast_duration = 1.5; // Czas trwania zamachu w sekundach
+        let t = (time / cast_duration).min(1.0); // Normalizowane 0..1
+        let ease_t = if t < 1.0 {
+            // Smooth easing (ease-in-out)
+            let t2 = t * t;
+            let t3 = t2 * t;
+            3.0 * t2 - 2.0 * t3
+        } else {
+            1.0
+        };
+
+        // Pozycja BOTTOM HAND (dolna dłoń przy uchwycie)
+        let bottom_start = vec3(0.0, 1.0, 0.0);          // Pozycja początkowa
+        let bottom_end = vec3(0.8, 0.6, 1.5);            // Pcha do przodu, w dół i na bok
+        let bottom_pos = bottom_start + (bottom_end - bottom_start) * ease_t;
+
+        // Pozycja TOP HAND (górna dłoń ~67% wysokości)
+        let top_start = vec3(0.0, 3.0, 0.0);             // Pozycja początkowa (punkt 10)
+        let top_end = vec3(-0.6, 3.8, -1.2);             // Ciągnie w tył, w górę i na bok
+        let top_pos = top_start + (top_end - top_start) * ease_t;
+
+        // Ustaw pozycje chwytów PRZED symulacją
+        fishing_rod.set_grip_positions(bottom_pos, top_pos);
 
         // Aktualizuj symulację wędki
         fishing_rod.update(dt, &mut log_file, frame_count);
